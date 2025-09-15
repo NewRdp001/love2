@@ -119,6 +119,26 @@ jobs:
           Set-ItemProperty "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name fDenyTSConnections -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop" | Out-Null
 
+
+      - name: 📦 Install Telegram Desktop
+        run: |
+          $url = "https://telegram.org/dl/desktop/win64_portable"
+          $zip = "$env:TEMP\Telegram.zip"
+          $dest = "C:\Telegram"
+          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+          Expand-Archive -Path $zip -DestinationPath $dest -Force
+          Write-Host "Telegram installed at $dest"
+
+      - name: 🐍 Install Python (latest 3.x)
+        run: |
+          $url = "https://www.python.org/ftp/python/3.12.7/python-3.12.7-amd64.exe"
+          $installer = "$env:TEMP\python-installer.exe"
+          Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+          Start-Process -FilePath $installer -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0" -Wait
+          python --version
+          pip --version
+
+          
       - name: 🧹 PURGE any devices containing 'bullet' (startup)
         run: |
           $hdr = @{ Authorization = "Bearer ${{ steps.cfg.outputs.apikey }}" }
