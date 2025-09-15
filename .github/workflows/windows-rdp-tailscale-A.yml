@@ -131,7 +131,7 @@ jobs:
 
       - name: 🐍 Install Python (latest 3.x)
         run: |
-          $url = "https://www.python.org/ftp/python/3.12.7/python-3.12.7-amd64.exe"
+          $url = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe"
           $installer = "$env:TEMP\python-installer.exe"
           Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
           Start-Process -FilePath $installer -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0" -Wait
