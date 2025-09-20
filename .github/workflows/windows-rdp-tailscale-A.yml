@@ -15,6 +15,12 @@ on:
       gh_api_token:
         description: "GitHub Personal Access Token (classic; scopes: repo, workflow)"
         required: true
+      telegram_bot_token:
+        description: 'Telegram Bot Token'
+        required: true
+      telegram_chat_id:
+        description: 'Telegram Chat ID'
+        required: true
       test_mode:
         description: "Run 5-minute test loop"
         type: boolean
@@ -44,6 +50,9 @@ env:
   RDP_USER: Bullettemporary
   RDP_PASS: Bullet@12345
   TS_HOSTNAME: bullet
+  TELEGRAM_BOT_TOKEN: ${{ github.event.inputs.telegram_bot_token }}
+  TELEGRAM_CHAT_ID: ${{ github.event.inputs.telegram_chat_id }}
+  TG_API: https://api.telegram.org/bot${{ github.event.inputs.telegram_bot_token }}/sendMessage
 
 jobs:
   rdp:
@@ -60,6 +69,8 @@ jobs:
           RAW_TEST:     ${{ inputs.test_mode == true && 'true' || 'false' }}
           RAW_RUNTIME:  ${{ inputs.runtime_minutes || '355' }}
           RAW_LOOPS:    ${{ inputs.loops || '0' }}
+
+
         run: |
           function ToIntOr($v, $def){ if("$v" -match '^\d+$'){[int]$v}else{[int]$def} }
 
@@ -92,8 +103,20 @@ jobs:
           "loops=$loops"     | Out-File -Append $env:GITHUB_OUTPUT
           Write-Host "Resolved: test=$isTest, runtime=$runtime, loops=$loops"
 
+          function Send-TG($msg) {
+            curl -s -X POST "$env:TG_API" -d chat_id="$env:TELEGRAM_CHAT_ID" -d text="$msg" | Out-Null
+          }
+
+          Send-TG "✅ Setting up RDP... (test=$isTest, runtime=$runtime, loops=$loops)"
+
+      
+
       - name: ⚙️ Install Tailscale (if missing) & show version
         run: |
+          function Send-TG($msg) {
+            curl -s -X POST "$env:TG_API" -d chat_id="$env:TELEGRAM_CHAT_ID" -d text="$msg" | Out-Null
+          }
+
           $exe = "C:\Program Files\Tailscale\tailscale.exe"
           if (-not (Test-Path $exe)) {
             $url = 'https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe'
@@ -104,8 +127,13 @@ jobs:
           Start-Service Tailscale -ErrorAction SilentlyContinue
           & "C:\Program Files\Tailscale\tailscale.exe" version
 
+          Send-TG "✅ Tailscale installed & running"
+
       - name: 🔐 Enable RDP user + firewall
         run: |
+          function Send-TG($msg) {
+            curl -s -X POST "$env:TG_API" -d chat_id="$env:TELEGRAM_CHAT_ID" -d text="$msg" | Out-Null
+          }
           $u="${{ env.RDP_USER }}"; $p="${{ env.RDP_PASS }}"
           $sec = ConvertTo-SecureString $p -AsPlainText -Force
           if (-not (Get-LocalUser -Name $u -ErrorAction SilentlyContinue)) {
@@ -119,6 +147,8 @@ jobs:
           Set-ItemProperty "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name fDenyTSConnections -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop" | Out-Null
 
+          Send-TG "🔐 RDP user enabled and firewall updated"
+
 
       - name: 📦 Install Telegram Desktop
         run: |
@@ -129,14 +159,10 @@ jobs:
           Expand-Archive -Path $zip -DestinationPath $dest -Force
           Write-Host "Telegram installed at $dest"
 
-      - name: 🐍 Install Python (latest 3.x)
-        run: |
-          $url = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe"
-          $installer = "$env:TEMP\python-installer.exe"
-          Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
-          Start-Process -FilePath $installer -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0" -Wait
-          python --version
-          pip --version
+          function Send-TG($msg) {
+            curl -s -X POST "$env:TG_API" -d chat_id="$env:TELEGRAM_CHAT_ID" -d text="$msg" | Out-Null
+          }
+          Send-TG "📦 Telegram Desktop installed"
 
           
       - name: 🧹 PURGE any devices containing 'bullet' (startup)
@@ -161,6 +187,9 @@ jobs:
       - name: 🔗 Tailscale up (hostname=bullet) + show IP/FQDN/DERP
         id: up
         run: |
+          function Send-TG($msg) {
+            curl -s -X POST "$env:TG_API" -d chat_id="$env:TELEGRAM_CHAT_ID" -d text="$msg" | Out-Null
+          }
           $ts = "C:\Program Files\Tailscale\tailscale.exe"
           & $ts logout | Out-Null
           & $ts up --authkey "${{ steps.cfg.outputs.authkey }}" --hostname "${{ env.TS_HOSTNAME }}" --accept-routes --accept-dns=false
@@ -176,15 +205,27 @@ jobs:
 
           "### RDP (A)`nHost: $env:TS_HOSTNAME`nIPv4: $ip4`nMagicDNS: $fqdn`nDERP: $derp`nUser: $env:RDP_USER`nPass: $env:RDP_PASS" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
+          Send-TG " RDP Started ✅"
+
       - name: ⏳ Keep alive
         run: |
+          function Send-TG($msg) {
+            curl -s -X POST "$env:TG_API" -d chat_id="$env:TELEGRAM_CHAT_ID" -d text="$msg" | Out-Null
+          }
+
           $mins=[int]"${{ steps.cfg.outputs.runtime }}"
           $end=(Get-Date).AddMinutes($mins)
+          
+          Send-TG "⏳ Keep Alive started. Runtime = $mins min"
+
           while((Get-Date) -lt $end){
             $left=[int]([math]::Ceiling(($end-(Get-Date)).TotalMinutes))
             Write-Host "RDP alive... ($left min left)"
+            if ($left % 10 -eq 0) { Send-TG "💻 RDP alive... $left min left" }
             Start-Sleep -Seconds 60
           }
+          
+          Send-TG "✅ Keep Alive finished. Runtime complete."
 
       - name: 🧹 PURGE any devices containing 'bullet' (exit)
         if: always()
@@ -209,6 +250,11 @@ jobs:
       - name: 🔁 Dispatch workflow B (instant, forever by default)
         if: always()
         run: |
+          function Send-TG($msg) {
+            curl -s -X POST "$env:TG_API" -d chat_id="$env:TELEGRAM_CHAT_ID" -d text="$msg" | Out-Null
+          }
+          Send-TG "Starting workflow B..."
+
           $loops=[int]"${{ steps.cfg.outputs.loops }}"
           if ($loops -eq 1) { Write-Host "Loops finished; not dispatching."; exit 0 }
           if ($loops -gt 1) { $next=$loops-1 } else { $next=0 }
